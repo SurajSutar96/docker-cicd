@@ -1,4 +1,5 @@
-name: Deploy to EC2 🚀
+# .github/workflows/deploy.yaml
+name: Deploy FastAPI to EC2
 
 on:
   push:
@@ -8,32 +9,28 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code ✅
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up SSH key (PEM format) and known hosts 🔐
+      - name: Setup SSH key 🗝️
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          echo "${{ vars.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ vars.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Copy files to EC2 via SCP 🚚
+      - name: Upload project files to EC2 using rsync 📦
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+          EC2_HOST: ${{ vars.EC2_HOST }}
+          EC2_USERNAME: ${{ vars.EC2_USERNAME }}
         run: |
-          ssh $EC2_USERNAME@$EC2_HOST "mkdir -p ~/app"
-          scp -r . $EC2_USERNAME@$EC2_HOST:~/app
+          rsync -avz --exclude='.git' --exclude='.github' ./ $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/app/
 
-      - name: Run deploy script on EC2 🚀
+      - name: Run deploy.sh on EC2 🚀
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+          EC2_HOST: ${{ vars.EC2_HOST }}
+          EC2_USERNAME: ${{ vars.EC2_USERNAME }}
         run: |
-          ssh $EC2_USERNAME@$EC2_HOST "cd ~/app && chmod +x deploy.sh && ./deploy.sh"
-
-      - name: Clean up SSH key 🧹
-        if: always()
-        run: rm -f ~/.ssh/id_rsa
+          ssh $EC2_USERNAME@$EC2_HOST "cd /home/$EC2_USERNAME/app && bash deploy.sh"
