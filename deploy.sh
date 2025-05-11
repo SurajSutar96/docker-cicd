@@ -1,66 +1,85 @@
 #!/bin/bash
 
-APP_DIR="/var/www/langchain-app"
+APP_NAME="myproject"
+APP_DIR="/home/ubuntu/$APP_NAME"
+ENV_DIR="$APP_DIR/env"
+USER="ubuntu"
+SOCK_PATH="/run/gunicorn.sock"
 
-echo "Deleting old app"
-sudo rm -rf $APP_DIR
+echo "=== Updating system and installing dependencies ==="
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv nginx curl
 
-echo "Creating app folder"
-sudo mkdir -p $APP_DIR
+echo "=== Creating virtual environment and installing requirements ==="
+python3 -m venv $ENV_DIR
+source $ENV_DIR/bin/activate
+pip install --upgrade pip
+pip install -r $APP_DIR/requirements.txt
+pip install gunicorn uvicorn
 
-echo "Moving files to app folder"
-sudo cp -r /home/$USER/app/* $APP_DIR
+echo "=== Setting up Gunicorn socket file ==="
+sudo bash -c "cat > /etc/systemd/system/gunicorn.socket" <<EOF
+[Unit]
+Description=gunicorn socket
 
-# Navigate to the app directory
-cd $APP_DIR
-sudo mv env .env
+[Socket]
+ListenStream=$SOCK_PATH
 
-echo "Installing Python and pip"
-sudo apt-get update
-sudo apt-get install -y python3 python3-pip
+[Install]
+WantedBy=sockets.target
+EOF
 
-# Install application dependencies
-echo "Installing dependencies"
-sudo pip3 install -r requirements.txt
+echo "=== Setting up Gunicorn service file ==="
+sudo bash -c "cat > /etc/systemd/system/gunicorn.service" <<EOF
+[Unit]
+Description=gunicorn daemon
+Requires=gunicorn.socket
+After=network.target
 
-# Install Uvicorn and Gunicorn for FastAPI
-sudo pip3 install "uvicorn[standard]" gunicorn
+[Service]
+User=$USER
+Group=www-data
+WorkingDirectory=$APP_DIR
+ExecStart=$ENV_DIR/bin/gunicorn \\
+  --access-logfile - \\
+  --workers 5 \\
+  --bind unix:$SOCK_PATH \\
+  --worker-class uvicorn.workers.UvicornWorker \\
+  main:app
 
-# Install and configure Nginx
-if ! command -v nginx > /dev/null; then
-    echo "Installing Nginx"
-    sudo apt-get install -y nginx
-fi
+[Install]
+WantedBy=multi-user.target
+EOF
 
-# Nginx reverse proxy config
-if [ ! -f /etc/nginx/sites-available/myapp ]; then
-    sudo rm -f /etc/nginx/sites-enabled/default
-    sudo bash -c 'cat > /etc/nginx/sites-available/myapp <<EOF
+echo "=== Reloading systemd and enabling Gunicorn ==="
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl start gunicorn.socket
+sudo systemctl enable gunicorn.socket
+sudo systemctl restart gunicorn
+
+echo "=== Setting up Nginx configuration ==="
+sudo bash -c "cat > /etc/nginx/sites-available/$APP_NAME" <<EOF
 server {
     listen 80;
     server_name _;
 
+    location = /favicon.ico { access_log off; log_not_found off; }
+
     location / {
-        proxy_pass http://unix:/var/www/langchain-app/myapp.sock;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        include proxy_params;
+        proxy_pass http://unix:$SOCK_PATH;
     }
 }
-EOF'
-    sudo ln -s /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled
-    sudo systemctl restart nginx
-else
-    echo "Nginx reverse proxy configuration already exists."
-fi
+EOF
 
-# Stop existing Gunicorn process if running
-sudo pkill gunicorn || true
-sudo rm -f myapp.sock
+sudo ln -sf /etc/nginx/sites-available/$APP_NAME /etc/nginx/sites-enabled
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl restart nginx
 
-# Start Gunicorn with Uvicorn worker for FastAPI
-echo "Starting FastAPI with Gunicorn + Uvicorn workers"
-sudo gunicorn main:app --workers 3 --worker-class uvicorn.workers.UvicornWorker --bind unix:myapp.sock --user www-data --group www-data --daemon
+echo "=== Updating UFW firewall rules ==="
+sudo ufw delete allow 8000 || true
+sudo ufw allow 'Nginx Full'
 
-echo "FastAPI app deployed and running at http://$(curl -s ifconfig.me) 🚀"
+echo "=== Deployment completed successfully ==="
+echo "App should be live at: http://$(curl -s ifconfig.me)"
