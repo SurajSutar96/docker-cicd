@@ -8,7 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code ✅
         uses: actions/checkout@v3
@@ -20,13 +19,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Copy files to EC2 via SCP 🚚
+      - name: Copy files to EC2 via rsync 🚚
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
         run: |
           ssh $EC2_USERNAME@$EC2_HOST "mkdir -p ~/app"
-          scp -r . $EC2_USERNAME@$EC2_HOST:~/app
+          rsync -av --exclude='.git' ./ $EC2_USERNAME@$EC2_HOST:~/app
 
       - name: Run deploy script on EC2 🚀
         env:
