@@ -1,18 +1,17 @@
 #!/bin/bash
 
 APP_NAME="myproject"
-APP_DIR="/home/ubuntu/$APP_NAME"
+APP_DIR="/home/ubuntu/app"
 ENV_DIR="$APP_DIR/env"
 USER="ubuntu"
 SOCK_PATH="/run/gunicorn.sock"
 
 echo "=== Updating system and installing dependencies ==="
 sudo apt update
-sudo apt install -y python3 python3-pip python3-venv nginx curl git
+sudo DEBIAN_FRONTEND=noninteractive apt install -y python3 python3-pip python3-venv nginx curl
 
-echo "=== Cloning repository from GitHub ==="
-cd ~
-git clone https://github.com/yourusername/your-repo.git $APP_DIR
+echo "=== Setting ownership of the app directory ==="
+sudo chown -R $USER:www-data $APP_DIR
 
 echo "=== Creating virtual environment and installing requirements ==="
 python3 -m venv $ENV_DIR
@@ -86,3 +85,4 @@ sudo ufw delete allow 8000 || true
 sudo ufw allow 'Nginx Full'
 
 echo "=== Deployment completed successfully ==="
+echo "App should be live at: http://$(curl -s ifconfig.me)"
