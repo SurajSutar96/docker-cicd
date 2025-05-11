@@ -3,36 +3,36 @@ name: Deploy to EC2 🚀
 on:
   push:
     branches:
-      - "main"
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout current branch ✅
-        uses: actions/checkout@v2
+      - name: Checkout code ✅
+        uses: actions/checkout@v3
 
-      - name: Set up SSH key and whitelist EC2 IP address 🐻‍❄️
+      - name: Set up SSH key (PEM format) and known hosts 🔐
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Copy files to EC2 🚙
+      - name: Copy files to EC2 via SCP 🚚
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
         run: |
-          rsync -avz --exclude '.git' --exclude '.github' ./ $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/app/
+          ssh $EC2_USERNAME@$EC2_HOST "mkdir -p ~/app"
+          scp -r . $EC2_USERNAME@$EC2_HOST:~/app
 
-      - name: Run Deployment Script on EC2 🚀
+      - name: Run deploy script on EC2 🚀
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
         run: |
-          ssh -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_HOST "cd /home/$EC2_USERNAME/app && chmod +x deploy.sh && ./deploy.sh"
+          ssh $EC2_USERNAME@$EC2_HOST "cd ~/app && chmod +x deploy.sh && ./deploy.sh"
 
       - name: Clean up SSH key 🧹
         if: always()
