@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  fastapi-app:
+    image: surajsutar8154/docker_tut:01
+    container_name: fastapi_container
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
