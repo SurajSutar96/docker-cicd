@@ -1,13 +1,13 @@
 #!/bin/bash
 
 echo "Deleting old app"
-sudo rm -rf /var/www/
+sudo rm -rf /var/www/langchain-app
 
 echo "Creating app folder"
-sudo mkdir -p /var/www/langchain-app 
+sudo mkdir -p /var/www/langchain-app
 
 echo "Moving files to app folder"
-sudo mv * /var/www/langchain-app
+sudo cp -r * /var/www/langchain-app
 
 # Navigate to the app directory
 cd /var/www/langchain-app/
@@ -17,11 +17,8 @@ echo "Installing Python and pip"
 sudo apt-get update
 sudo apt-get install -y python3 python3-pip
 
-# Install application dependencies
 echo "Installing dependencies"
 sudo pip3 install -r requirements.txt
-
-# Install Uvicorn and Gunicorn for FastAPI
 sudo pip3 install "uvicorn[standard]" gunicorn
 
 # Install and configure Nginx
@@ -30,10 +27,10 @@ if ! command -v nginx > /dev/null; then
     sudo apt-get install -y nginx
 fi
 
-# Nginx reverse proxy config
-if [ ! -f /etc/nginx/sites-available/myapp ]; then
+# Update Nginx config
+if [ ! -f /etc/nginx/sites-available/langchain-app ]; then
     sudo rm -f /etc/nginx/sites-enabled/default
-    sudo bash -c 'cat > /etc/nginx/sites-available/myapp <<EOF
+    sudo bash -c 'cat > /etc/nginx/sites-available/langchain-app <<EOF
 server {
     listen 80;
     server_name _;
@@ -47,19 +44,24 @@ server {
     }
 }
 EOF'
-    sudo ln -s /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled
-    sudo systemctl restart nginx
-else
-    echo "Nginx reverse proxy configuration already exists."
+    sudo ln -s /etc/nginx/sites-available/langchain-app /etc/nginx/sites-enabled/
 fi
 
-# Stop existing Gunicorn process
+echo "Restarting Nginx"
+sudo systemctl restart nginx
+
+# Stop old Gunicorn processes
 sudo pkill gunicorn || true
 sudo rm -f myapp.sock
 
-# Start Gunicorn with Uvicorn worker for FastAPI
-# Replace 'main:app' if your FastAPI app uses a different file/module
-echo "Starting FastAPI with Gunicorn + Uvicorn workers"
-sudo gunicorn main:app --workers 3 --worker-class uvicorn.workers.UvicornWorker --bind unix:myapp.sock --user www-data --group www-data --daemon
+# Start FastAPI using Gunicorn + Uvicorn worker
+echo "Starting FastAPI app with Gunicorn"
+sudo gunicorn main:app \
+  --workers 3 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind unix:/var/www/langchain-app/myapp.sock \
+  --user www-data \
+  --group www-data \
+  --daemon
 
-echo "FastAPI app deployed and running! 🚀"
+echo "✅ FastAPI app deployed and accessible at: http://18.118.31.182/"
